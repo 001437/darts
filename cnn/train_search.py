@@ -17,7 +17,7 @@ from torch.autograd import Variable
 from model_search import Network
 from architect import Architect
 
-
+# 一些训练参数，设置默认值（论文附录A.1.1），也可以在命令行指定值
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--data', type=str, default='../data', help='location of the data corpus')
 parser.add_argument('--batch_size', type=int, default=64, help='batch size')
@@ -43,9 +43,11 @@ parser.add_argument('--arch_learning_rate', type=float, default=3e-4, help='lear
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 args = parser.parse_args()
 
+# 每次实验都会创建一个文件夹，把所有py文件给复制过去
 args.save = 'search-{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
 utils.create_exp_dir(args.save, scripts_to_save=glob.glob('*.py'))
 
+# 日志格式设置
 log_format = '%(asctime)s %(message)s'
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
     format=log_format, datefmt='%m/%d %I:%M:%S %p')
@@ -71,12 +73,15 @@ def main():
   logging.info('gpu device = %d' % args.gpu)
   logging.info("args = %s", args)
 
+  # 交叉熵损失函数
   criterion = nn.CrossEntropyLoss()
   criterion = criterion.cuda()
+  # 初始化一个网络架构
   model = Network(args.init_channels, CIFAR_CLASSES, args.layers, criterion)
   model = model.cuda()
   logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
-
+  
+  # 用于优化权重w的带momentum的SGD优化器
   optimizer = torch.optim.SGD(
       model.parameters(),
       args.learning_rate,
