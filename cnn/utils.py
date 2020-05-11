@@ -102,6 +102,7 @@ def load(model, model_path):
 def drop_path(x, drop_prob):
   if drop_prob > 0.:
     keep_prob = 1.-drop_prob
+    # 从伯努利分布中抽取0或1,1的概率为keep_prob，返回的mask是个0/1的tensor，其中1的比例约为keep_prob
     mask = Variable(torch.cuda.FloatTensor(x.size(0), 1, 1, 1).bernoulli_(keep_prob))
     # 没有丢弃之前的期望为E[x]，加入drop path之后的期望为p*E[x]，需要除以p保持期望不变
     x.div_(keep_prob)
