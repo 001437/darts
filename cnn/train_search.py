@@ -165,6 +165,8 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
     input_search = Variable(input_search, requires_grad=False).cuda()
     target_search = Variable(target_search, requires_grad=False).cuda(async=True)
 
+    ### 优化部分：DARTS是交替优化的，第一步先优化alpha，第二步再优化w
+    
     # 更新架构权重alpha，unrolled为True时就是用论文的公式进行alpha的更新
     architect.step(input, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
     
