@@ -76,38 +76,46 @@ def main():
   # 交叉熵损失函数
   criterion = nn.CrossEntropyLoss()
   criterion = criterion.cuda()
-  # 初始化一个网络架构
+  # 初始化一个模型，Network在model_search.py里定义
+  # 这个主要是用于更新网络权重w
   model = Network(args.init_channels, CIFAR_CLASSES, args.layers, criterion)
   model = model.cuda()
   logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
   
-  # 用于优化权重w的带momentum的SGD优化器
+  # 用于优化权重w的带动量的SGD优化器
   optimizer = torch.optim.SGD(
       model.parameters(),
       args.learning_rate,
       momentum=args.momentum,
       weight_decay=args.weight_decay)
-
+  
+  # 架构搜索的时候用CIFAR-10作为代理任务
   train_transform, valid_transform = utils._data_transforms_cifar10(args)
   train_data = dset.CIFAR10(root=args.data, train=True, download=True, transform=train_transform)
 
+  # 论文里train_portion=0.5，也就是取一半作为训练集，一半作为验证集
   num_train = len(train_data)
   indices = list(range(num_train))
   split = int(np.floor(args.train_portion * num_train))
 
+  # 原来训练集的前半部分作为现在的训练集
   train_queue = torch.utils.data.DataLoader(
       train_data, batch_size=args.batch_size,
       sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[:split]),
       pin_memory=True, num_workers=2)
 
+  # 原来训练集的后半部分作为现在的验证集
   valid_queue = torch.utils.data.DataLoader(
       train_data, batch_size=args.batch_size,
       sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[split:num_train]),
       pin_memory=True, num_workers=2)
 
+  # 优化权重w时，学习率调整用的是余弦退火（SGDR），但只训练50个epoch，其实就相当于cos学习率衰减，没有周期变化
   scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, float(args.epochs), eta_min=args.learning_rate_min)
 
+  # 初始化架构，Architect在architect.py中定义
+  # 跟model的差别是这个用于架构参数alpha的更新
   architect = Architect(model, args)
 
   for epoch in range(args.epochs):
@@ -115,46 +123,57 @@ def main():
     lr = scheduler.get_lr()[0]
     logging.info('epoch %d lr %e', epoch, lr)
 
+    # 对应论文2.4节，会选出来权重值最大的k个前驱节点（CNN部分的话k=2），并把最后的结果存下来
+    # 格式为Genotype(normal=[(op,i),..],normal_concat=[],reduce=[],reduce_concat=[])
     genotype = model.genotype()
     logging.info('genotype = %s', genotype)
 
     print(F.softmax(model.alphas_normal, dim=-1))
     print(F.softmax(model.alphas_reduce, dim=-1))
 
-    # training
+    # 进行训练
     train_acc, train_obj = train(train_queue, valid_queue, model, architect, criterion, optimizer, lr)
     logging.info('train_acc %f', train_acc)
 
-    # validation
+    # 进行验证
     valid_acc, valid_obj = infer(valid_queue, model, criterion)
     logging.info('valid_acc %f', valid_acc)
 
+    # 保存一下模型
     utils.save(model, os.path.join(args.save, 'weights.pt'))
 
 
 def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
+  # 分别记录loss、top-1和top-5精度
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
 
   for step, (input, target) in enumerate(train_queue):
     model.train()
+    # 当前的batch size，每个epoch的最后一个iteration的batch size不一定是设置的数值
     n = input.size(0)
 
     input = Variable(input, requires_grad=False).cuda()
+    # async在新版本Pytorch中已经被non_blocking所代替，如果这里有报错可以修改一下
     target = Variable(target, requires_grad=False).cuda(async=True)
 
     # get a random minibatch from the search queue with replacement
+    # 更新alpha是用验证集进行更新的，所以每次都从valid_queue拿出一个batch传入architect.step()
+    # 这么写的原因可以看这个issue：https://github.com/quark0/darts/issues/8
     input_search, target_search = next(iter(valid_queue))
     input_search = Variable(input_search, requires_grad=False).cuda()
     target_search = Variable(target_search, requires_grad=False).cuda(async=True)
 
+    # 更新架构权重alpha，unrolled为True时就是用论文的公式进行alpha的更新
     architect.step(input, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
-
+    
+    # 前向传播，计算loss
     optimizer.zero_grad()
     logits = model(input)
     loss = criterion(logits, target)
 
+    # 反向传播，梯度裁剪，更新模型权重w
     loss.backward()
     nn.utils.clip_grad_norm(model.parameters(), args.grad_clip)
     optimizer.step()
@@ -177,6 +196,8 @@ def infer(valid_queue, model, criterion):
   model.eval()
 
   for step, (input, target) in enumerate(valid_queue):
+    # volatile=True相当于requires_grad=False，适用于推断阶段，不需要反向传播。
+    # 这个现在已经取消了，使用with torch.no_grad()来替代
     input = Variable(input, volatile=True).cuda()
     target = Variable(target, volatile=True).cuda(async=True)
 
