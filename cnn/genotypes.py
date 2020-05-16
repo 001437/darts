@@ -2,6 +2,7 @@ from collections import namedtuple
 
 Genotype = namedtuple('Genotype', 'normal normal_concat reduce reduce_concat')
 
+# 定义搜索空间用到的操作
 PRIMITIVES = [
     'none',
     'max_pool_3x3',
@@ -13,6 +14,7 @@ PRIMITIVES = [
     'dil_conv_5x5'
 ]
 
+# NASNet搜索得到的结构
 NASNet = Genotype(
   normal = [
     ('sep_conv_5x5', 1),
@@ -41,7 +43,8 @@ NASNet = Genotype(
   ],
   reduce_concat = [4, 5, 6],
 )
-    
+
+# AmobaNet搜索得到的结构
 AmoebaNet = Genotype(
   normal = [
     ('avg_pool_3x3', 0),
@@ -71,6 +74,7 @@ AmoebaNet = Genotype(
   reduce_concat = [3, 4, 6]
 )
 
+# DARTS搜索得到的两个结构
 DARTS_V1 = Genotype(normal=[('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ('skip_connect', 0), ('sep_conv_3x3', 1), ('skip_connect', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ('skip_connect', 2)], normal_concat=[2, 3, 4, 5], reduce=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('skip_connect', 2), ('max_pool_3x3', 0), ('max_pool_3x3', 0), ('skip_connect', 2), ('skip_connect', 2), ('avg_pool_3x3', 0)], reduce_concat=[2, 3, 4, 5])
 DARTS_V2 = Genotype(normal=[('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 1), ('skip_connect', 0), ('skip_connect', 0), ('dil_conv_3x3', 2)], normal_concat=[2, 3, 4, 5], reduce=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('skip_connect', 2), ('max_pool_3x3', 1), ('max_pool_3x3', 0), ('skip_connect', 2), ('skip_connect', 2), ('max_pool_3x3', 1)], reduce_concat=[2, 3, 4, 5])
 
